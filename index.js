@@ -28,7 +28,7 @@ io.on('connection', (socket) => {
   socket.on('newUser', (data) => {
     console.log(data)
     users.push(data)
-    io.emit('newUserResponse', users)
+    io.to(data.room).emit('newUserResponse', users)
     io.to(data.room).emit('user-connected', gameInfo)
   })
 
