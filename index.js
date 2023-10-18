@@ -1,8 +1,20 @@
 const express = require('express')
+const cors = require('cors')
+
+const mongoose = require('mongoose')
+const roomschema = require('./models/room')
+const roomSchema = roomschema.schema
+const Room = roomschema.model
+
+const axios = require('axios').default
 const app = express()
+
+// Import routes
+const status = require('./routes/status')
+const creategame = require('./routes/creategame')
+
 const PORT = 3000
 const http = require('http').Server(app)
-const cors = require('cors')
 const io = require('socket.io')(http, {
   cors: {
     origin: 'http://localhost:5173',
@@ -10,6 +22,25 @@ const io = require('socket.io')(http, {
 })
 
 app.use(cors())
+
+mongoose.connect('mongodb://127.0.0.1:27017/battleships', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+
+const db = mongoose.connection
+db.on('error', console.log.bind(console, 'connection error: '))
+db.once('open', function () {
+  console.log('Connected successfully')
+})
+
+const roomsdb = db.useDb('rooms', {
+  useCache: true,
+})
+
+// API routes
+app.use('/api', status)
+app.use('/api', creategame)
 
 let users = []
 let gameInfo = { data: 'test' }
@@ -32,9 +63,39 @@ io.on('connection', (socket) => {
     io.to(data.room).emit('user-connected', gameInfo)
   })
 
-  socket.on('join', (data) => {
+  socket.on('join', async (data) => {
     console.log(`User ${data.userName} joining ${data.room}`)
-    socket.join(data.room)
+    // Need to register models every time a new connection is created
+    if (!roomsdb.models['Room']) {
+      roomsdb.model('Room', roomSchema)
+    }
+
+    await Room.findOne({ room: data.room })
+      .then((room) => {
+        if (room) {
+          console.log('Room exists.')
+          socket.join(data.room)
+          socket.emit('gameResponse', room)
+        } else {
+          console.log('Room does not exist. Creating in db.')
+          axios
+            .get(`http://localhost:${PORT}/api/creategame`)
+            .then((response) => {
+              socket.join(data.room)
+              const room = {
+                ships: response.data.ships,
+                board: response.data.board,
+                room: data.room,
+                winner: false,
+                playerOneTurn: true,
+              }
+              Room.create(room)
+              socket.emit('gameResponse', room)
+            })
+            .catch((err) => console.log(err))
+        }
+      })
+      .catch((err) => res.status(500).json({ message: err.message }))
   })
 
   socket.on('message', (data) => {
@@ -43,12 +104,6 @@ io.on('connection', (socket) => {
   })
 
   socket.on('typing', (data) => socket.broadcast.emit('typingResponse', data))
-})
-
-app.get('/api', (req, res) => {
-  res.json({
-    message: 'Hello world',
-  })
 })
 
 http.listen(PORT, () => {
