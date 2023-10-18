@@ -39,7 +39,7 @@ function randomShip(length) {
   }
 }
 
-const generateShips = (ships = [3]) => {
+const generateShips = (ships = [3, 4, 6]) => {
   return ships.map((ship) => {
     const shipCells = randomShip(ship)
     return shipCells.map((id) => ({ id, isHit: false }))
