@@ -9,6 +9,7 @@ const RoomSchema = new mongoose.Schema({
   board: { type: mongoose.Schema.Types.Mixed, required: true },
   winner: { type: Boolean, required: true },
   playerOneTurn: { type: Boolean, required: true },
+  step: { type: Number, required: true },
 })
 
 const Room = mongoose.model('Room', RoomSchema)

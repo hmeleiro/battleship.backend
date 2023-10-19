@@ -48,17 +48,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('🔥: A user disconnected')
-    //Updates the list of users when a user disconnects from the server
-    // users = users.filter((user) => user.socketID !== socket.id)
-    //Sends the list of users to the client
-    // io.emit('newUserResponse', users)
     socket.disconnect()
-  })
-
-  socket.on('newUser', (data) => {
-    // console.log(data)
-    // users.push(data)
-    // io.to(data.room).emit('newUserResponse', users)
   })
 
   socket.on('join', async (data) => {
@@ -85,7 +75,6 @@ io.on('connection', (socket) => {
       }
       console.log(`Room ${roomId} exists in db.`)
       socket.join(roomId)
-
       if (room.players.indexOf(userId) === -1) {
         room.players.push(userId)
       }
@@ -93,15 +82,12 @@ io.on('connection', (socket) => {
         { room: roomId },
         { players: room.players },
       )
-
-      socket.emit('gameResponse', room)
     } else {
       console.log(`Room ${roomId} does not exist in db. Creating.`)
       response = await axios
         .get(`http://localhost:${PORT}/api/creategame`)
         .then((response) => response)
         .catch((err) => console.log(err))
-
       room = {
         ships: response.data.ships,
         board: response.data.board,
@@ -109,14 +95,30 @@ io.on('connection', (socket) => {
         players: [userId],
         winner: false,
         playerOneTurn: true,
+        step: 0,
       }
-
-      console.log('room', room.room)
       const document = new Room(room)
-      const savedDocument = await document.save()
+      room = await document.save()
       socket.join(room.room)
-      socket.emit('gameResponse', savedDocument)
     }
+
+    if (room.players.length === 2) {
+      io.to(roomId).emit('secondPlayerConnected', {
+        message: `Second player connected to ${roomId}`,
+      })
+
+      io.to(roomId).emit('gameState', room)
+    }
+  })
+
+  socket.on('gameState', (data) => {
+    socket.broadcast.to(data.room).emit('gameState', data)
+  })
+
+  socket.on('nextTurn', (data) => {
+    data.playerOneTurn = !data.playerOneTurn
+    data.step = data.step += 1
+    io.in(data.room).emit('newGameState', data)
   })
 
   socket.on('message', (data) => {
